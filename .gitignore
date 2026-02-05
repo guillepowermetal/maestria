@@ -6,3 +6,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+# Data folders (too large for GitHub)
+paper-signature-data/
+digital-signature-data/
+modelos-supervisados/creditcard.csv
+modelos-supervisados/sentiment-analysis/IMDB Dataset.csv
