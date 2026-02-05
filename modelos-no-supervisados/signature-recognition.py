@@ -830,15 +830,13 @@ def compute_and_save_additional_metrics():
     
     # 1. Multi-model ROC overlays (paper and digital separated)
     try:
-        # Paper ROC overlay
+        # Paper ROC overlay (4 models)
         fig, ax = plt.subplots(figsize=(8, 6))
-        
         # paper_cnn ROC
         y_scores_p = model_paper_cnn.predict(X_p_test).ravel()
         fpr, tpr, _ = roc_curve(Y_p_test, y_scores_p)
         auc_p = roc_auc_score(Y_p_test, y_scores_p)
         ax.plot(fpr, tpr, label=f'paper_cnn (AUC={auc_p:.3f})', linewidth=2)
-        
         # paper_ae ROC
         err_r = calculate_errors(model_paper_ae, x_p_test_real)
         err_f = calculate_errors(model_paper_ae, x_p_forged)
@@ -847,7 +845,6 @@ def compute_and_save_additional_metrics():
         fpr, tpr, _ = roc_curve(y_ae, scores_ae)
         auc_ae = roc_auc_score(y_ae, scores_ae)
         ax.plot(fpr, tpr, label=f'paper_ae (AUC={auc_ae:.3f})', linewidth=2)
-        
         # paper_ae2 ROC
         err_r2 = calculate_errors(model_paper_ae2, x_p_test_real)
         err_f2 = calculate_errors(model_paper_ae2, x_p_forged)
@@ -856,7 +853,14 @@ def compute_and_save_additional_metrics():
         fpr, tpr, _ = roc_curve(y_ae2, scores_ae2)
         auc_ae2 = roc_auc_score(y_ae2, scores_ae2)
         ax.plot(fpr, tpr, label=f'paper_ae2 (AUC={auc_ae2:.3f})', linewidth=2)
-        
+        # paper_cnn_deep ROC
+        try:
+            y_scores_p_deep = model_paper_cnn_deep.predict(X_p_test).ravel()
+            fpr, tpr, _ = roc_curve(Y_p_test, y_scores_p_deep)
+            auc_p_deep = roc_auc_score(Y_p_test, y_scores_p_deep)
+            ax.plot(fpr, tpr, label=f'paper_cnn_deep (AUC={auc_p_deep:.3f})', linewidth=2)
+        except Exception as e:
+            print(f'Warning: paper_cnn_deep ROC failed: {e}')
         ax.plot([0,1],[0,1],'--', color='gray', label='Random')
         ax.set_xlabel('FPR', fontsize=11)
         ax.set_ylabel('TPR', fontsize=11)
@@ -866,28 +870,31 @@ def compute_and_save_additional_metrics():
         plt.tight_layout()
         plt.savefig(os.path.join(RESULTS_DIR, 'comparison-paper-roc.png'), dpi=150)
         plt.close()
-        
-        # Digital ROC overlay
+        # Digital ROC overlay (4 models)
         fig, ax = plt.subplots(figsize=(8, 6))
-        
         # digital_clf ROC
         y_scores_d = model_digital_clf.predict(Xd_test).ravel()
         fpr, tpr, _ = roc_curve(Yd_test, y_scores_d)
         auc_d = roc_auc_score(Yd_test, y_scores_d)
         ax.plot(fpr, tpr, label=f'digital_clf (AUC={auc_d:.3f})', linewidth=2)
-        
         # digital_ae ROC
         err_ae_all = calculate_errors(model_digital_ae, Xd_test)
         fpr, tpr, _ = roc_curve(Yd_test, err_ae_all)
         auc_d_ae = roc_auc_score(Yd_test, err_ae_all)
         ax.plot(fpr, tpr, label=f'digital_ae (AUC={auc_d_ae:.3f})', linewidth=2)
-        
         # digital_gru ROC
         err_gru_all = calculate_errors(model_digital_gru, Xd_test)
         fpr, tpr, _ = roc_curve(Yd_test, err_gru_all)
         auc_d_gru = roc_auc_score(Yd_test, err_gru_all)
-        ax.plot(fpr, tpr, label=f'digital_gru (AUC={auc_d_gru:.3f})', linewidth=2)
-        
+        ax.plot(fpr, tpr, label=f'digital_gru_ae (AUC={auc_d_gru:.3f})', linewidth=2)
+        # digital_transformer ROC
+        try:
+            y_scores_dt = model_digital_transformer.predict(Xd_test).ravel()
+            fpr, tpr, _ = roc_curve(Yd_test, y_scores_dt)
+            auc_dt = roc_auc_score(Yd_test, y_scores_dt)
+            ax.plot(fpr, tpr, label=f'digital_transformer (AUC={auc_dt:.3f})', linewidth=2)
+        except Exception as e:
+            print(f'Warning: digital_transformer ROC failed: {e}')
         ax.plot([0,1],[0,1],'--', color='gray', label='Random')
         ax.set_xlabel('FPR', fontsize=11)
         ax.set_ylabel('TPR', fontsize=11)
@@ -899,28 +906,31 @@ def compute_and_save_additional_metrics():
         plt.close()
     except Exception as e:
         print(f'Warning: ROC overlay plots failed: {e}')
-    
     # 2. Multi-model PR overlays (paper and digital separated)
     try:
-        # Paper PR overlay
+        # Paper PR overlay (4 models)
         fig, ax = plt.subplots(figsize=(8, 6))
-        
         # paper_cnn PR
         y_scores_p = model_paper_cnn.predict(X_p_test).ravel()
         precision, recall, _ = precision_recall_curve(Y_p_test, y_scores_p)
         ap_p = average_precision_score(Y_p_test, y_scores_p)
         ax.plot(recall, precision, label=f'paper_cnn (AP={ap_p:.3f})', linewidth=2)
-        
         # paper_ae PR
         precision, recall, _ = precision_recall_curve(y_ae, scores_ae)
         ap_ae = average_precision_score(y_ae, scores_ae)
         ax.plot(recall, precision, label=f'paper_ae (AP={ap_ae:.3f})', linewidth=2)
-        
         # paper_ae2 PR
         precision, recall, _ = precision_recall_curve(y_ae2, scores_ae2)
         ap_ae2 = average_precision_score(y_ae2, scores_ae2)
         ax.plot(recall, precision, label=f'paper_ae2 (AP={ap_ae2:.3f})', linewidth=2)
-        
+        # paper_cnn_deep PR
+        try:
+            y_scores_p_deep = model_paper_cnn_deep.predict(X_p_test).ravel()
+            precision, recall, _ = precision_recall_curve(Y_p_test, y_scores_p_deep)
+            ap_p_deep = average_precision_score(Y_p_test, y_scores_p_deep)
+            ax.plot(recall, precision, label=f'paper_cnn_deep (AP={ap_p_deep:.3f})', linewidth=2)
+        except Exception as e:
+            print(f'Warning: paper_cnn_deep PR failed: {e}')
         ax.set_xlabel('Recall', fontsize=11)
         ax.set_ylabel('Precision', fontsize=11)
         ax.set_title('Paper Models: Precision-Recall Comparison', fontsize=12, fontweight='bold')
@@ -929,25 +939,28 @@ def compute_and_save_additional_metrics():
         plt.tight_layout()
         plt.savefig(os.path.join(RESULTS_DIR, 'comparison-paper-pr.png'), dpi=150)
         plt.close()
-        
-        # Digital PR overlay
+        # Digital PR overlay (4 models)
         fig, ax = plt.subplots(figsize=(8, 6))
-        
         # digital_clf PR
         precision, recall, _ = precision_recall_curve(Yd_test, y_scores_d)
         ap_d = average_precision_score(Yd_test, y_scores_d)
         ax.plot(recall, precision, label=f'digital_clf (AP={ap_d:.3f})', linewidth=2)
-        
         # digital_ae PR
         precision, recall, _ = precision_recall_curve(Yd_test, err_ae_all)
         ap_d_ae = average_precision_score(Yd_test, err_ae_all)
         ax.plot(recall, precision, label=f'digital_ae (AP={ap_d_ae:.3f})', linewidth=2)
-        
         # digital_gru PR
         precision, recall, _ = precision_recall_curve(Yd_test, err_gru_all)
         ap_d_gru = average_precision_score(Yd_test, err_gru_all)
-        ax.plot(recall, precision, label=f'digital_gru (AP={ap_d_gru:.3f})', linewidth=2)
-        
+        ax.plot(recall, precision, label=f'digital_gru_ae (AP={ap_d_gru:.3f})', linewidth=2)
+        # digital_transformer PR
+        try:
+            y_scores_dt = model_digital_transformer.predict(Xd_test).ravel()
+            precision, recall, _ = precision_recall_curve(Yd_test, y_scores_dt)
+            ap_dt = average_precision_score(Yd_test, y_scores_dt)
+            ax.plot(recall, precision, label=f'digital_transformer (AP={ap_dt:.3f})', linewidth=2)
+        except Exception as e:
+            print(f'Warning: digital_transformer PR failed: {e}')
         ax.set_xlabel('Recall', fontsize=11)
         ax.set_ylabel('Precision', fontsize=11)
         ax.set_title('Digital Models: Precision-Recall Comparison', fontsize=12, fontweight='bold')
