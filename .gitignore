@@ -7,7 +7,8 @@ __pycache__/
 dist/
 build/
 # Data folders (too large for GitHub)
-paper-signature-data/
-digital-signature-data/
+modelos-no-supervisados/paper-signature-data/
+modelos-no-supervisados/digital-signature-data/
 modelos-supervisados/creditcard.csv
 modelos-supervisados/sentiment-analysis/IMDB Dataset.csv
+modelos-no-supervisados/results/
