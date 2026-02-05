@@ -12,3 +12,9 @@ modelos-no-supervisados/digital-signature-data/
 modelos-supervisados/creditcard.csv
 modelos-supervisados/sentiment-analysis/IMDB Dataset.csv
 modelos-no-supervisados/results/
+# CSV and image files (can be regenerated or are too large)
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.gif
