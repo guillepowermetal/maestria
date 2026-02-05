@@ -1013,26 +1013,42 @@ def compute_and_save_additional_metrics():
     except Exception as e:
         print(f'Warning: bar chart failed: {e}')
     
-    # 4. Error distribution box plots (AE models only)
+    # 4. Error distribution box plots (all 4 models per category)
     try:
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        
-        # Paper AE errors
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        # --- Paper models ---
+        # AE errors
         err_p_ae = calculate_errors(model_paper_ae, x_p_forged)
         err_p_ae2 = calculate_errors(model_paper_ae2, x_p_forged)
-        axes[0].boxplot([err_p_ae, err_p_ae2], labels=['paper_ae', 'paper_ae2'])
-        axes[0].set_ylabel('Reconstruction Error', fontsize=11)
-        axes[0].set_title('Paper AE: Error Distribution (on forged)', fontsize=12, fontweight='bold')
+        # CNN classifier errors (1 - pred prob for forged)
+        y_scores_p = model_paper_cnn.predict(x_p_forged).ravel()
+        err_p_cnn = 1.0 - y_scores_p
+        # Deep CNN classifier errors (1 - pred prob for forged)
+        try:
+            y_scores_p_deep = model_paper_cnn_deep.predict(x_p_forged).ravel()
+            err_p_cnn_deep = 1.0 - y_scores_p_deep
+        except Exception:
+            err_p_cnn_deep = np.zeros_like(err_p_ae)
+        axes[0].boxplot([err_p_ae, err_p_ae2, err_p_cnn, err_p_cnn_deep], labels=['paper_ae', 'paper_ae2', 'paper_cnn', 'paper_cnn_deep'])
+        axes[0].set_ylabel('Error / 1-Pred (Forged)', fontsize=11)
+        axes[0].set_title('Paper Models: Error Distribution (on forged)', fontsize=12, fontweight='bold')
         axes[0].grid(axis='y', alpha=0.3)
-        
-        # Digital AE errors
+        # --- Digital models ---
         err_d_ae = calculate_errors(model_digital_ae, x_d_f_test)
         err_d_gru = calculate_errors(model_digital_gru, x_d_f_test)
-        axes[1].boxplot([err_d_ae, err_d_gru], labels=['digital_ae', 'digital_gru'])
-        axes[1].set_ylabel('Reconstruction Error', fontsize=11)
-        axes[1].set_title('Digital AE: Error Distribution (on forged)', fontsize=12, fontweight='bold')
+        # LSTM classifier errors (1 - pred prob for forged)
+        y_scores_d = model_digital_clf.predict(x_d_f_test).ravel()
+        err_d_clf = 1.0 - y_scores_d
+        # Transformer classifier errors (1 - pred prob for forged)
+        try:
+            y_scores_dt = model_digital_transformer.predict(x_d_f_test).ravel()
+            err_d_transformer = 1.0 - y_scores_dt
+        except Exception:
+            err_d_transformer = np.zeros_like(err_d_ae)
+        axes[1].boxplot([err_d_ae, err_d_gru, err_d_clf, err_d_transformer], labels=['digital_ae', 'digital_gru_ae', 'digital_clf', 'digital_transformer'])
+        axes[1].set_ylabel('Error / 1-Pred (Forged)', fontsize=11)
+        axes[1].set_title('Digital Models: Error Distribution (on forged)', fontsize=12, fontweight='bold')
         axes[1].grid(axis='y', alpha=0.3)
-        
         plt.tight_layout()
         plt.savefig(os.path.join(RESULTS_DIR, 'comparison-error-distributions.png'), dpi=150)
         plt.close()
