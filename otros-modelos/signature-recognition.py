@@ -583,8 +583,12 @@ def plot_confusion(y_true, scores, threshold, filename, labels=['Real','Forged']
     preds = (scores >= threshold).astype(int)
     cm = confusion_matrix(y_true, preds)
     plt.figure()
+    # Extract model name from filename if possible
+    import re
+    m = re.match(r'(.*?)-(confusion|confusion\.png)', filename)
+    model_name = m.group(1) if m else filename.replace('-confusion.png','').replace('.png','')
     plt.imshow(cm, cmap='Blues')
-    plt.title('Confusion Matrix')
+    plt.title(f'Confusion Matrix: {model_name}', fontsize=13, fontweight='bold')
     plt.colorbar()
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
