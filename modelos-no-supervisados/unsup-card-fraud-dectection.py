@@ -6,7 +6,7 @@ import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.ensemble import IsolationForest
-from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, roc_auc_score
+from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
 from sklearn.decomposition import PCA
 
 # 1. CARGA DE DATOS
@@ -67,59 +67,68 @@ print(f"Fracción de anomalías detectada: {outlier_fraction:.4f}")
 # ---------------------------------------------------------
 
 
+
 # --- Hyperparameter Tuning (basic grid) ---
 print("Entrenando Isolation Forest (tuning)...")
-best_if_auc = 0
+best_iforest = None
+best_y_pred_if = None
+best_score_if = -np.inf
 for contamination in [outlier_fraction, outlier_fraction*2, 0.01, 0.05]:
     iforest = IsolationForest(contamination=contamination, random_state=42)
     y_pred_if = iforest.fit_predict(X_scaled)
-    y_pred_if = [1 if i == -1 else 0 for i in y_pred_if]
-    auc = roc_auc_score(y_true, y_pred_if)
-    if auc > best_if_auc:
-        best_if_auc = auc
+    # For anomaly detection, use average anomaly score as a metric
+    if hasattr(iforest, 'decision_function'):
+        scores = -iforest.decision_function(X_scaled)
+        avg_score = np.mean(scores)
+    else:
+        avg_score = np.mean(y_pred_if)
+    if avg_score > best_score_if:
+        best_score_if = avg_score
         best_iforest = iforest
         best_y_pred_if = y_pred_if
-print(f"Mejor Isolation Forest AUC: {best_if_auc:.4f}")
+print(f"Mejor Isolation Forest average anomaly score: {best_score_if:.4f}")
 
 print("Entrenando K-Means (tuning)...")
-best_km_auc = 0
+best_kmeans = None
+best_distances = None
+best_y_pred_km = None
+best_km_sil = -1
 for n_clusters in [4, 8, 12]:
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     kmeans.fit(X_scaled)
-    distances = np.min(kmeans.transform(X_scaled), axis=1)
-    threshold = np.percentile(distances, 100 * (1 - outlier_fraction))
-    y_pred_km = [1 if d > threshold else 0 for d in distances]
-    auc = roc_auc_score(y_true, y_pred_km)
-    if auc > best_km_auc:
-        best_km_auc = auc
+    labels = kmeans.labels_
+    sil = silhouette_score(X_scaled, labels)
+    if sil > best_km_sil:
+        best_km_sil = sil
         best_kmeans = kmeans
-        best_distances = distances
-        best_y_pred_km = y_pred_km
-print(f"Mejor K-Means AUC: {best_km_auc:.4f}")
+        best_distances = np.min(kmeans.transform(X_scaled), axis=1)
+        best_labels_km = labels
+print(f"Mejor K-Means Silhouette: {best_km_sil:.4f}")
 
 print("Entrenando DBSCAN (tuning)...")
-best_db_auc = 0
+best_dbscan = None
+best_clusters_db = None
+best_db_sil = -1
 for eps in [1.5, 2.0, 3.0]:
     dbscan = DBSCAN(eps=eps, min_samples=10)
     clusters_db = dbscan.fit_predict(X_scaled)
-    y_pred_db = [1 if c == -1 else 0 for c in clusters_db]
-    auc = roc_auc_score(y_true, y_pred_db)
-    if auc > best_db_auc:
-        best_db_auc = auc
-        best_dbscan = dbscan
-        best_clusters_db = clusters_db
-        best_y_pred_db = y_pred_db
-print(f"Mejor DBSCAN AUC: {best_db_auc:.4f}")
+    # Only compute silhouette if more than 1 cluster and less than all noise
+    if len(set(clusters_db)) > 1 and np.sum(clusters_db == -1) < len(clusters_db):
+        sil = silhouette_score(X_scaled, clusters_db)
+        if sil > best_db_sil:
+            best_db_sil = sil
+            best_dbscan = dbscan
+            best_clusters_db = clusters_db
+print(f"Mejor DBSCAN Silhouette: {best_db_sil:.4f}")
 
 # Use best models for all downstream plots
 iforest = best_iforest
 y_pred_if = best_y_pred_if
 kmeans = best_kmeans
 distances = best_distances
-y_pred_km = best_y_pred_km
+labels_km = best_labels_km
 dbscan = best_dbscan
 clusters_db = best_clusters_db
-y_pred_db = best_y_pred_db
 
 # ---------------------------------------------------------
 # 4. VISUALIZACIÓN DE RESULTADOS (PCA 2D)
@@ -160,13 +169,14 @@ plt.close()
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # --- PCA 2D Scatter Plots ---
+
 plot_df = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
 plot_df['Realidad'] = y_true.values
 plot_df['IF'] = y_pred_if
-plot_df['KM'] = y_pred_km
-plot_df['DB'] = y_pred_db
+plot_df['KM'] = labels_km
+plot_df['DB'] = clusters_db
 fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-titulos = ['Distribución Real (Fraude)', 'Isolation Forest', 'K-Means (Distancia)', 'DBSCAN (Densidad)']
+titulos = ['Distribución Real (Fraude)', 'Isolation Forest', 'K-Means (Cluster)', 'DBSCAN (Cluster)']
 columnas = ['Realidad', 'IF', 'KM', 'DB']
 paletas = ['viridis', 'rocket', 'mako', 'flare']
 for i, ax in enumerate(axes.flat):
@@ -181,8 +191,8 @@ if X_umap is not None:
     plot_df_umap = pd.DataFrame(X_umap, columns=['UMAP1', 'UMAP2'])
     plot_df_umap['Realidad'] = y_true.values
     plot_df_umap['IF'] = y_pred_if
-    plot_df_umap['KM'] = y_pred_km
-    plot_df_umap['DB'] = y_pred_db
+    plot_df_umap['KM'] = labels_km
+    plot_df_umap['DB'] = clusters_db
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     for i, ax in enumerate(axes.flat):
         sns.scatterplot(data=plot_df_umap, x='UMAP1', y='UMAP2', hue=columnas[i], ax=ax, palette=paletas[i], alpha=0.6)
@@ -191,142 +201,48 @@ if X_umap is not None:
     plt.savefig(os.path.join(RESULTS_DIR, 'umap-scatter-all.png'))
     plt.close()
 
-# --- Confusion Matrices ---
-from sklearn.metrics import ConfusionMatrixDisplay
-for name, y_pred in zip(['Isolation Forest', 'K-Means', 'DBSCAN'], [y_pred_if, y_pred_km, y_pred_db]):
-    cm = confusion_matrix(y_true, y_pred)
-    disp = ConfusionMatrixDisplay(cm, display_labels=['Normal','Fraude'])
-    disp.plot(cmap='Blues')
-    plt.title(f'Confusion Matrix: {name}')
-    plt.savefig(os.path.join(RESULTS_DIR, f'confusion-{name.replace(" ", "_").lower()}.png'))
-    plt.close()
 
-# --- ROC Curves ---
-from sklearn.metrics import roc_curve, precision_recall_curve, average_precision_score
-plt.figure(figsize=(8,6))
-for name, y_pred in zip(['Isolation Forest', 'K-Means', 'DBSCAN'], [y_pred_if, y_pred_km, y_pred_db]):
-    fpr, tpr, _ = roc_curve(y_true, y_pred)
-    auc = roc_auc_score(y_true, y_pred)
-    plt.plot(fpr, tpr, label=f'{name} (AUC={auc:.3f})')
-plt.plot([0,1],[0,1],'--', color='gray')
-plt.xlabel('FPR')
-plt.ylabel('TPR')
-plt.title('ROC Curve Comparison')
-plt.legend()
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, 'roc-compare.png'))
-plt.close()
+# --- Unsupervised Metrics and Plots ---
+print("Calculando métricas no supervisadas...")
+metrics_unsup = {}
 
-# --- Precision-Recall Curves ---
-plt.figure(figsize=(8,6))
-for name, y_pred in zip(['Isolation Forest', 'K-Means', 'DBSCAN'], [y_pred_if, y_pred_km, y_pred_db]):
-    precision, recall, _ = precision_recall_curve(y_true, y_pred)
-    ap = average_precision_score(y_true, y_pred)
-    plt.plot(recall, precision, label=f'{name} (AP={ap:.3f})')
-plt.xlabel('Recall')
-plt.ylabel('Precision')
-plt.title('Precision-Recall Curve Comparison')
-plt.legend()
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, 'pr-compare.png'))
-plt.close()
+# KMeans metrics
+metrics_unsup['KMeans'] = {
+    'Silhouette': silhouette_score(X_scaled, labels_km),
+    'Davies-Bouldin': davies_bouldin_score(X_scaled, labels_km),
+    'Calinski-Harabasz': calinski_harabasz_score(X_scaled, labels_km)
+}
 
-# --- Error Distribution Histograms ---
-plt.figure(figsize=(10,6))
-plt.hist(distances[y_true==0], bins=30, alpha=0.5, label='K-Means Normal')
-plt.hist(distances[y_true==1], bins=30, alpha=0.5, label='K-Means Fraude')
-plt.title('K-Means Distance Error Distribution')
-plt.legend()
-plt.savefig(os.path.join(RESULTS_DIR, 'error-hist-kmeans.png'))
-plt.close()
+# DBSCAN metrics (if valid)
+if clusters_db is not None and len(set(clusters_db)) > 1 and np.sum(clusters_db == -1) < len(clusters_db):
+    metrics_unsup['DBSCAN'] = {
+        'Silhouette': silhouette_score(X_scaled, clusters_db),
+        'Davies-Bouldin': davies_bouldin_score(X_scaled, clusters_db),
+        'Calinski-Harabasz': calinski_harabasz_score(X_scaled, clusters_db)
+    }
+else:
+    metrics_unsup['DBSCAN'] = {'Silhouette': np.nan, 'Davies-Bouldin': np.nan, 'Calinski-Harabasz': np.nan}
 
+# Isolation Forest anomaly score histogram
 if hasattr(iforest, 'decision_function'):
     scores_if = -iforest.decision_function(X_scaled)
     plt.figure(figsize=(10,6))
-    plt.hist(scores_if[y_true==0], bins=30, alpha=0.5, label='IF Normal')
-    plt.hist(scores_if[y_true==1], bins=30, alpha=0.5, label='IF Fraude')
-    plt.title('Isolation Forest Score Distribution')
-    plt.legend()
-    plt.savefig(os.path.join(RESULTS_DIR, 'error-hist-iforest.png'))
+    plt.hist(scores_if, bins=30, alpha=0.7, color='purple')
+    plt.title('Isolation Forest Anomaly Score Distribution')
+    plt.xlabel('Anomaly Score')
+    plt.ylabel('Frequency')
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_DIR, 'iforest-anomaly-score-hist.png'))
     plt.close()
+    metrics_unsup['IsolationForest'] = {'Average Anomaly Score': np.mean(scores_if)}
+else:
+    metrics_unsup['IsolationForest'] = {'Average Anomaly Score': np.nan}
 
-plt.figure(figsize=(10,6))
-plt.hist(clusters_db[y_true==0], bins=30, alpha=0.5, label='DBSCAN Normal')
-plt.hist(clusters_db[y_true==1], bins=30, alpha=0.5, label='DBSCAN Fraude')
-plt.title('DBSCAN Cluster Distribution')
-plt.legend()
-plt.savefig(os.path.join(RESULTS_DIR, 'error-hist-dbscan.png'))
-plt.close()
+# Save metrics as CSV and print
+metrics_unsup_df = pd.DataFrame(metrics_unsup).T
+metrics_unsup_df.to_csv(os.path.join(RESULTS_DIR, 'unsupervised-metrics-summary.csv'))
+print("\nResumen de métricas no supervisadas:")
+print(metrics_unsup_df)
 
-# --- Summary Bar Chart ---
-from sklearn.metrics import precision_score, recall_score, f1_score
-metrics = []
-for name, y_pred in zip(['Isolation Forest', 'K-Means', 'DBSCAN'], [y_pred_if, y_pred_km, y_pred_db]):
-    auc = roc_auc_score(y_true, y_pred)
-    prec = precision_score(y_true, y_pred)
-    rec = recall_score(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred)
-    metrics.append({'model':name, 'auc':auc, 'precision':prec, 'recall':rec, 'f1':f1})
-metrics_df = pd.DataFrame(metrics)
-plt.figure(figsize=(10,6))
-bar_width = 0.2
-index = np.arange(len(metrics_df))
-plt.bar(index-bar_width*1.5, metrics_df['auc'], bar_width, label='AUC')
-plt.bar(index-bar_width*0.5, metrics_df['precision'], bar_width, label='Precision')
-plt.bar(index+bar_width*0.5, metrics_df['recall'], bar_width, label='Recall')
-plt.bar(index+bar_width*1.5, metrics_df['f1'], bar_width, label='F1')
-plt.xticks(index, metrics_df['model'])
-plt.ylim([0,1.1])
-plt.title('Model Metrics Comparison')
-plt.legend()
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, 'metrics-bar.png'))
-plt.close()
 
-# --- Metrics Heatmap ---
-plt.figure(figsize=(8,6))
-sns.heatmap(metrics_df.set_index('model'), annot=True, cmap='RdYlGn', vmin=0, vmax=1)
-plt.title('Model Metrics Heatmap')
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, 'metrics-heatmap.png'))
-plt.close()
-
-# --- Metrics Summary Table (CSV and PNG) ---
-metrics_df_rounded = metrics_df.copy()
-metrics_df_rounded[['auc','precision','recall','f1']] = metrics_df_rounded[['auc','precision','recall','f1']].round(4)
-metrics_df_rounded.to_csv(os.path.join(RESULTS_DIR, 'metrics-summary.csv'), index=False)
-
-# Save as PNG table
-import matplotlib.table as tbl
-fig, ax = plt.subplots(figsize=(7,2))
-ax.axis('off')
-table = ax.table(cellText=metrics_df_rounded.values,
-                 colLabels=metrics_df_rounded.columns,
-                 rowLabels=metrics_df_rounded['model'],
-                 loc='center')
-table.auto_set_font_size(False)
-table.set_fontsize(10)
-table.scale(1.2, 1.5)
-plt.title('Model Metrics Summary', fontsize=12, fontweight='bold')
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, 'metrics-summary-table.png'), bbox_inches='tight', dpi=150)
-plt.close()
-
-plt.tight_layout()
-plt.show()
-
-# ---------------------------------------------------------
-# 5. MATRICES DE CONFUSIÓN Y MÉTRICAS
-# ---------------------------------------------------------
-fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-modelos = [("Isolation Forest", y_pred_if), ("K-Means", y_pred_km), ("DBSCAN", y_pred_db)]
-
-for i, (nombre, y_p) in enumerate(modelos):
-    cm = confusion_matrix(y_true, y_p)
-    ConfusionMatrixDisplay(cm, display_labels=['Normal', 'Fraude']).plot(ax=axes[i], cmap='Blues', colorbar=False)
-    axes[i].set_title(f'{nombre}\nROC AUC: {roc_auc_score(y_true, y_p):.3f}')
-    
-    print(f"\nReporte {nombre}:")
-    print(classification_report(y_true, y_p))
-
-plt.show()
+# --- End of script: only unsupervised metrics and plots are generated ---
